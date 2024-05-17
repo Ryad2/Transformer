@@ -303,7 +303,7 @@ class Trainer(object):
         self.batch_size = batch_size
 
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = ...  ### WRITE YOUR CODE HERE
+        self.optimizer = torch.optim.Adam  ### WRITE YOUR CODE HERE
 
     def train_all(self, dataloader):
         """
