@@ -38,11 +38,20 @@ class PCA(object):
         Returns:
             exvar (float): explained variance of the kept dimensions (in percentage, i.e., in [0,100])
         """
-        ##
-        ###
-        #### WRITE YOUR CODE HERE!
-        ###
-        ##
+        self.mean = np.mean(training_data, axis = 0)
+
+        cov_matrix = np.cov((training_data - self.mean), rowvar = False)
+
+        eigvals, eigvecs = np.linalg.eigh(cov_matrix)
+
+        sorted_indices = np.argsort(eigvals)[::-1]
+        eigvals = eigvals[sorted_indices]
+        eigvecs = eigvecs[:, sorted_indices]
+
+        self.W = eigvecs[:, :self.d]
+
+        exvar = (np.sum(eigvals[:self.d])/np.sum(eigvals)) * 100
+        
         return exvar
 
     def reduce_dimension(self, data):
@@ -54,11 +63,7 @@ class PCA(object):
         Returns:
             data_reduced (array): reduced data of shape (N,d)
         """
-        ##
-        ###
-        #### WRITE YOUR CODE HERE!
-        ###
-        ##
-        return data_reduced
         
-
+        data_reduced = (data - self.mean) @ self.W
+        
+        return data_reduced

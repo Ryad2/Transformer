@@ -6,7 +6,7 @@ from torchinfo import summary
 from src.data import load_data
 from src.methods.pca import PCA
 from src.methods.deep_network import MLP, CNN, Trainer, MyViT
-from src.utils import normalize_fn, append_bias_term, accuracy_fn, macrof1_fn, get_n_classes
+from src.utils import normalize_fn, append_bias_term, accuracy_fn, macrof1_fn, get_n_classes, label_to_onehot, onehot_to_label
 
 
 def main(args):
@@ -19,9 +19,13 @@ def main(args):
                           of this file). Their value can be accessed as "args.argument".
     """
     ## 1. First, we load our data and flatten the images into vectors
-    xtrain, xtest, ytrain = load_data(args.data_path)
-    xtrain = xtrain.reshape(xtrain.shape[0], -1)
-    xtest = xtest.reshape(xtest.shape[0], -1)
+    xtrain, xtest, ytrain = load_data(args.data)
+    xtrain = np.reshape(xtrain, (-1, 1, 28, 28))
+    xtest = np.reshape(xtest, (-1, 1, 28, 28))
+
+    if args.nn_type == "mlp":
+        xtrain = xtrain.reshape(xtrain.shape[0], -1)
+        xtest = xtest.reshape(xtest.shape[0], -1)
 
     ## 2. Then we must prepare it. This is were you can create a validation set,
     #  normalize, add bias, etc.
@@ -29,17 +33,27 @@ def main(args):
     # Make a validation set
     if not args.test:
     ### WRITE YOUR CODE HERE
-        print("Using PCA")
+        n_samples = xtrain.shape[0]
+        validation_ratio = 0.2 # adjust as you want
+        rinds = np.random.permutation(n_samples)
+        n_validation = int(n_samples * validation_ratio)
+
+        xtest = xtrain[rinds[:n_validation]]
+        xtrain = xtrain[rinds[n_validation:]]
+        ytest = ytrain[rinds[:n_validation]]
+        ytrain = ytrain[rinds[n_validation:]]
 
     ### WRITE YOUR CODE HERE to do any other data processing
 
 
     # Dimensionality reduction (MS2)
     if args.use_pca:
-        print("Using PCA")
         pca_obj = PCA(d=args.pca_d)
         ### WRITE YOUR CODE HERE: use the PCA object to reduce the dimensionality of the data
-
+        exvar = pca_obj.find_principal_components(xtrain)
+        xtrain = pca_obj.reduce_dimension(xtrain)
+        xtest = pca_obj.reduce_dimension(xtest)
+        print(f"Using PCA: dimensionality reduction: {784} -> {args.pca_d}, expected variance = {exvar:.3f}%")
 
     ## 3. Initialize the method you want to use.
 
@@ -49,21 +63,32 @@ def main(args):
     # Note: you might need to reshape the data depending on the network you use!
     n_classes = get_n_classes(ytrain)
     if args.nn_type == "mlp":
-        model = ... ### WRITE YOUR CODE HERE
+        input_size = xtrain.shape[1]
+        model = MLP(input_size, n_classes)
+    elif args.nn_type == "cnn":
+        in_channels = 1
+        model = CNN(in_channels, n_classes)
+    elif args.nn_type == "transformer":
+        chw = xtrain[0].shape
+        n_patches = 7
+        n_blocks = 2
+        hidden_d = 8
+        n_heads = 2
+        model = MyViT(chw, n_patches, n_blocks, hidden_d, n_heads, n_classes)
 
     summary(model)
 
     # Trainer object
-    method_obj = Trainer(model, lr=args.lr, epochs=args.max_iters, batch_size=args.nn_batch_size)
+    method_obj = Trainer(model, lr=args.lr, epochs=args.max_iters, batch_size=args.nn_batch_size, device=args.device)
 
 
     ## 4. Train and evaluate the method
 
     # Fit (:=train) the method on the training data
-    preds_train = method_obj.fit(xtrain, ytrain)
+    preds_train = onehot_to_label(method_obj.fit(xtrain, label_to_onehot(ytrain)))
 
     # Predict on unseen data
-    preds = method_obj.predict(xtest)
+    preds = onehot_to_label(method_obj.predict(xtest))
 
     ## Report results: performance on train and valid/test sets
     acc = accuracy_fn(preds_train, ytrain)
@@ -73,8 +98,8 @@ def main(args):
 
     ## As there are no test dataset labels, check your model accuracy on validation dataset.
     # You can check your model performance on test set by submitting your test set predictions on the AIcrowd competition.
-    acc = accuracy_fn(preds, xtest)
-    macrof1 = macrof1_fn(preds, xtest)
+    acc = accuracy_fn(preds, ytest)
+    macrof1 = macrof1_fn(preds, ytest)
     print(f"Validation set:  accuracy = {acc:.3f}% - F1-score = {macrof1:.6f}")
 
 
