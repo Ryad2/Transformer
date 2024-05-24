@@ -1,7 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
+
+#from sciper1_sciper2_sciper3_project.src.utils import onehot_to_label
+
 
 ## MS2
 
@@ -320,11 +324,16 @@ class Trainer(object):
 
         with torch.no_grad():
             for batch in dataloader:
-                x = batch[0].to(self.device)
-                outputs = self.model(x)
-                pred_labels.append(outputs)
+                print(len(batch))
+                print(batch[0].shape)
+                inputs = batch.to(self.device)
+                outputs = self.model(inputs)
+                predicted = np.argmax(outputs.cpu().numpy(), axis=1)
+                #predicted = onehot_to_label(outputs.cpu().numpy())
+                pred_labels.append(predicted)
 
-        pred_labels = torch.cat(pred_labels)
+        pred_labels = torch.tensor(pred_labels)
+
         return pred_labels
     
     def fit(self, training_data, training_labels):
@@ -342,7 +351,7 @@ class Trainer(object):
 
         # First, prepare data for pytorch
         train_dataset = TensorDataset(torch.from_numpy(training_data).float(), 
-                                      torch.from_numpy(training_labels))
+                                      torch.from_numpy(training_labels).long())
         train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         
         self.train_all(train_dataloader)
