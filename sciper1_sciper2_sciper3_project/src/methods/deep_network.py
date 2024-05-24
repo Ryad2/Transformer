@@ -278,6 +278,7 @@ class Trainer(object):
             dataloader (DataLoader): dataloader for training data
         """
         for ep in range(self.epochs):
+            print(ep)
             self.train_one_epoch(dataloader, ep)
             ### WRITE YOUR CODE HERE if you want to do add something else at each epoch
 
@@ -327,7 +328,7 @@ class Trainer(object):
                 inputs = batch[0].to(self.device)
                 outputs = self.model(inputs)
                 #we didn't use one_hot_to_lable because it need a useless numpy convergence
-                predicted = torch.max(outputs, 1)
+                _, predicted = torch.max(outputs, 1)
                 pred_labels.append(predicted)
         
         pred_labels = torch.cat(pred_labels, dim=0)
