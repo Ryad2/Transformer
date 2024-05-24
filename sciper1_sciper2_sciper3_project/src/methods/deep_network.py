@@ -324,15 +324,13 @@ class Trainer(object):
 
         with torch.no_grad():
             for batch in dataloader:
-                print(len(batch))
-                print(batch[0].shape)
-                inputs = batch.to(self.device)
+                inputs = batch[0].to(self.device)
                 outputs = self.model(inputs)
-                predicted = np.argmax(outputs.cpu().numpy(), axis=1)
-                #predicted = onehot_to_label(outputs.cpu().numpy())
+                #we didn't use one_hot_to_lable because it need a useless numpy convergence
+                predicted = torch.max(outputs, 1)
                 pred_labels.append(predicted)
-
-        pred_labels = torch.tensor(pred_labels)
+        
+        pred_labels = torch.cat(pred_labels, dim=0)
 
         return pred_labels
     
@@ -351,7 +349,7 @@ class Trainer(object):
 
         # First, prepare data for pytorch
         train_dataset = TensorDataset(torch.from_numpy(training_data).float(), 
-                                      torch.from_numpy(training_labels).long())
+                                      torch.from_numpy(training_labels))
         train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         
         self.train_all(train_dataloader)
