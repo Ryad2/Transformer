@@ -328,10 +328,10 @@ class Trainer(object):
                 inputs = batch[0].to(self.device)
                 outputs = self.model(inputs)
                 #we didn't use one_hot_to_lable because it need a useless numpy convergence
-                _, predicted = torch.max(outputs, 1)
-                pred_labels.append(predicted)
+                #_, predicted = torch.max(outputs, 1)
+                pred_labels.append(outputs)
         
-        pred_labels = torch.cat(pred_labels, dim=0)
+        pred_labels = torch.cat(pred_labels)
 
         return pred_labels
     

@@ -85,10 +85,10 @@ def main(args):
     ## 4. Train and evaluate the method
 
     # Fit (:=train) the method on the training data
-    preds_train = method_obj.fit(xtrain, label_to_onehot(ytrain))
+    preds_train = onehot_to_label(method_obj.fit(xtrain, label_to_onehot(ytrain)))
 
     # Predict on unseen data
-    preds = method_obj.predict(xtest)
+    preds = onehot_to_label(method_obj.predict(xtest))
 
     ## Report results: performance on train and valid/test sets
     acc = accuracy_fn(preds_train, ytrain)
