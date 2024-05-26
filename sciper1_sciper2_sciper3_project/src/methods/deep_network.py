@@ -4,8 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
-#from sciper1_sciper2_sciper3_project.src.utils import onehot_to_label
-
+from ..utils import label_to_onehot
 
 ## MS2
 
@@ -327,9 +326,8 @@ class Trainer(object):
             for batch in dataloader:
                 inputs = batch[0].to(self.device)
                 outputs = self.model(inputs)
-                #we didn't use one_hot_to_lable because it need a useless numpy convergence
-                #_, predicted = torch.max(outputs, 1)
-                pred_labels.append(outputs)
+                _, predicted = torch.max(outputs, 1)
+                pred_labels.append(predicted)
         
         pred_labels = torch.cat(pred_labels)
 
@@ -350,7 +348,7 @@ class Trainer(object):
 
         # First, prepare data for pytorch
         train_dataset = TensorDataset(torch.from_numpy(training_data).float(), 
-                                      torch.from_numpy(training_labels))
+                                      torch.from_numpy(label_to_onehot(training_labels)))
         train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         
         self.train_all(train_dataloader)

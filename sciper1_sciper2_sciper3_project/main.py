@@ -6,7 +6,7 @@ from torchinfo import summary
 from src.data import load_data
 from src.methods.pca import PCA
 from src.methods.deep_network import MLP, CNN, Trainer, MyViT
-from src.utils import normalize_fn, append_bias_term, accuracy_fn, macrof1_fn, get_n_classes, label_to_onehot, onehot_to_label
+from src.utils import normalize_fn, append_bias_term, accuracy_fn, macrof1_fn, get_n_classes
 
 
 def main(args):
@@ -20,8 +20,8 @@ def main(args):
     """
     ## 1. First, we load our data and flatten the images into vectors
     xtrain, xtest, ytrain = load_data(args.data)
-    xtrain = np.reshape(xtrain, (-1, 1, 28, 28))
-    xtest = np.reshape(xtest, (-1, 1, 28, 28))
+    xtrain = np.reshape(xtrain, (-1, 1, 28, 28)).astype(float)
+    xtest = np.reshape(xtest, (-1, 1, 28, 28)).astype(float)
 
     if args.nn_type == "mlp":
         xtrain = xtrain.reshape(xtrain.shape[0], -1)
@@ -34,7 +34,7 @@ def main(args):
     if not args.test:
     ### WRITE YOUR CODE HERE
         n_samples = xtrain.shape[0]
-        validation_ratio = 0.2 # adjust as you want
+        validation_ratio = 0.25 # adjust as you want
         rinds = np.random.permutation(n_samples)
         n_validation = int(n_samples * validation_ratio)
 
@@ -44,7 +44,11 @@ def main(args):
         ytrain = ytrain[rinds[n_validation:]]
 
     ### WRITE YOUR CODE HERE to do any other data processing
-
+    if args.normalize:
+        mean_train = np.mean(xtrain, axis=0)
+        std_train = np.std(xtrain, axis=0)
+        xtrain = normalize_fn(xtrain, mean_train, std_train)
+        xtest = normalize_fn(xtest, mean_train, std_train)
 
     # Dimensionality reduction (MS2)
     if args.use_pca:
@@ -64,16 +68,17 @@ def main(args):
     n_classes = get_n_classes(ytrain)
     if args.nn_type == "mlp":
         input_size = xtrain.shape[1]
-        model = MLP(input_size, n_classes)
+        hidden_d = (128, 128, 128)
+        model = MLP(input_size, n_classes, hidden_d)
     elif args.nn_type == "cnn":
         in_channels = 1
         model = CNN(in_channels, n_classes)
     elif args.nn_type == "transformer":
         chw = xtrain[0].shape
         n_patches = 7
-        n_blocks = 2
-        hidden_d = 8
-        n_heads = 2
+        n_blocks = 4
+        hidden_d = 16
+        n_heads = 4
         model = MyViT(chw, n_patches, n_blocks, hidden_d, n_heads, n_classes)
 
     summary(model)
@@ -85,10 +90,10 @@ def main(args):
     ## 4. Train and evaluate the method
 
     # Fit (:=train) the method on the training data
-    preds_train = onehot_to_label(method_obj.fit(xtrain, label_to_onehot(ytrain)))
+    preds_train = method_obj.fit(xtrain, ytrain)
 
     # Predict on unseen data
-    preds = onehot_to_label(method_obj.predict(xtest))
+    preds = method_obj.predict(xtest)
 
     ## Report results: performance on train and valid/test sets
     acc = accuracy_fn(preds_train, ytrain)
@@ -127,6 +132,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_iters', type=int, default=100, help="max iters for methods which are iterative")
     parser.add_argument('--test', action="store_true",
                         help="train on whole training data and evaluate on the test data, otherwise use a validation set")
+    
+    parser.add_argument('--normalize', action="store_true", help="normalize data with mean and std of training data")
 
 
     # "args" will keep in memory the arguments and their values,
