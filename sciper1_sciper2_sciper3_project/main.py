@@ -8,6 +8,10 @@ from src.methods.pca import PCA
 from src.methods.deep_network import MLP, CNN, Trainer, MyViT
 from src.utils import normalize_fn, append_bias_term, accuracy_fn, macrof1_fn, get_n_classes
 
+from scipy.ndimage import rotate
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+
 
 def main(args):
     """
@@ -23,16 +27,12 @@ def main(args):
     xtrain = np.reshape(xtrain, (-1, 1, 28, 28)).astype(float)
     xtest = np.reshape(xtest, (-1, 1, 28, 28)).astype(float)
 
-    if args.nn_type == "mlp":
-        xtrain = xtrain.reshape(xtrain.shape[0], -1)
-        xtest = xtest.reshape(xtest.shape[0], -1)
-
     ## 2. Then we must prepare it. This is were you can create a validation set,
     #  normalize, add bias, etc.
 
     # Make a validation set
     if not args.test:
-    ### WRITE YOUR CODE HERE
+        # Split the training data into training and validation sets
         n_samples = xtrain.shape[0]
         validation_ratio = 0.25 # adjust as you want
         rinds = np.random.permutation(n_samples)
@@ -43,17 +43,36 @@ def main(args):
         ytest = ytrain[rinds[:n_validation]]
         ytrain = ytrain[rinds[n_validation:]]
 
-    ### WRITE YOUR CODE HERE to do any other data processing
+    ### other data processing
     if args.normalize:
+        # Normalize the data with the mean and std of the training data
+        xtrain /= 255.0
+        xtest /= 255.0
         mean_train = np.mean(xtrain, axis=0)
         std_train = np.std(xtrain, axis=0)
         xtrain = normalize_fn(xtrain, mean_train, std_train)
         xtest = normalize_fn(xtest, mean_train, std_train)
 
+    if args.augment_data:
+        # add random rotations to the training data
+        def random_rotation(images, angle_range):
+            rotated_images = images.copy()
+            for i in range(images.shape[0]):
+                angle = np.random.uniform(-angle_range, angle_range)
+                rotated_images[i] = rotate(images[i], angle, reshape=False, mode='nearest')
+            return rotated_images
+
+        print("Adding random rotations...")
+        xtrain = random_rotation(xtrain, 5)
+
+    if args.nn_type == "mlp":
+        # Flatten the images into vectors for MLP
+        xtrain = xtrain.reshape(xtrain.shape[0], -1)
+        xtest = xtest.reshape(xtest.shape[0], -1)
+
     # Dimensionality reduction (MS2)
     if args.use_pca:
         pca_obj = PCA(d=args.pca_d)
-        ### WRITE YOUR CODE HERE: use the PCA object to reduce the dimensionality of the data
         exvar = pca_obj.find_principal_components(xtrain)
         xtrain = pca_obj.reduce_dimension(xtrain)
         xtest = pca_obj.reduce_dimension(xtest)
@@ -68,11 +87,12 @@ def main(args):
     n_classes = get_n_classes(ytrain)
     if args.nn_type == "mlp":
         input_size = xtrain.shape[1]
-        hidden_d = (128, 128, 128)
-        model = MLP(input_size, n_classes, hidden_d)
+        hidden_d = (512, 256, 128, 54)
+        model = MLP(input_size, n_classes, hidden_d = hidden_d)
     elif args.nn_type == "cnn":
         in_channels = 1
-        model = CNN(in_channels, n_classes)
+        filters = (32, 64, 128)
+        model = CNN(in_channels, n_classes, filters)
     elif args.nn_type == "transformer":
         chw = xtrain[0].shape
         n_patches = 7
@@ -85,7 +105,6 @@ def main(args):
 
     # Trainer object
     method_obj = Trainer(model, lr=args.lr, epochs=args.max_iters, batch_size=args.nn_batch_size, device=args.device)
-
 
     ## 4. Train and evaluate the method
 
@@ -109,7 +128,13 @@ def main(args):
 
 
     ### WRITE YOUR CODE HERE if you want to add other outputs, visualization, etc.
-
+    cm = confusion_matrix(ytest, preds)
+    plt.imshow(cm, cmap='hot', interpolation='nearest')
+    plt.colorbar()
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
+    plt.show()
 
 if __name__ == '__main__':
     # Definition of the arguments that can be given through the command line (terminal).
@@ -134,6 +159,7 @@ if __name__ == '__main__':
                         help="train on whole training data and evaluate on the test data, otherwise use a validation set")
     
     parser.add_argument('--normalize', action="store_true", help="normalize data with mean and std of training data")
+    parser.add_argument('--augment_data', action="store_true", help="augment training data with random noise, horizontal flips and rotations")
 
 
     # "args" will keep in memory the arguments and their values,

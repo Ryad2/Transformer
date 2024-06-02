@@ -16,7 +16,7 @@ class MLP(nn.Module):
     It should not use any convolutional layers.
     """
 
-    def __init__(self, input_size, n_classes, hidden_d=(512, 256, 128), dropout=0.5):
+    def __init__(self, input_size, n_classes, hidden_d=(128, 64, 32, 28), dropout=0.25):
         """
         Initialize the network.
         
@@ -29,13 +29,16 @@ class MLP(nn.Module):
         """
         super().__init__()
         
+        # layers of the network: 4 hidden layers + 1 output layer
         self.fc1 = nn.Linear(input_size, hidden_d[0])
         self.bn1 = nn.BatchNorm1d(hidden_d[0])
         self.fc2 = nn.Linear(hidden_d[0], hidden_d[1])
         self.bn2 = nn.BatchNorm1d(hidden_d[1])
         self.fc3 = nn.Linear(hidden_d[1], hidden_d[2])
         self.bn3 = nn.BatchNorm1d(hidden_d[2])
-        self.fc4 = nn.Linear(hidden_d[2], n_classes)
+        self.fc4 = nn.Linear(hidden_d[2], hidden_d[3])
+        self.bn4 = nn.BatchNorm1d(hidden_d[3])
+        self.fc5 = nn.Linear(hidden_d[3], n_classes)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -48,13 +51,15 @@ class MLP(nn.Module):
             preds (tensor): logits of predictions of shape (N, C)
                 Reminder: logits are value pre-softmax.
         """
+        # dropout is applied after each layer
         pred = F.relu(self.bn1(self.fc1(x)))
         x = self.dropout(x)
         pred = F.relu(self.bn2(self.fc2(pred)))
         x = self.dropout(x)
         pred = F.relu(self.bn3(self.fc3(pred)))
         x = self.dropout(x)
-        pred = self.fc4(pred)
+        pred = F.relu(self.bn4(self.fc4(pred)))
+        pred = self.fc5(pred)
 
         return pred
 
@@ -66,7 +71,7 @@ class CNN(nn.Module):
     It should use at least one convolutional layer.
     """
 
-    def __init__(self, input_channels, n_classes, filters=(16, 32, 64), dropout=0.5):
+    def __init__(self, input_channels, n_classes, filters=(32, 64, 128), dropout=0.25):
         """
         Initialize the network.
         
@@ -79,11 +84,32 @@ class CNN(nn.Module):
         """
         super().__init__()
         
+        # first layer: 2D convolution + batch normalization
         self.conv2d1 = nn.Conv2d(input_channels, filters[0], 3, padding=1)
-        self.conv2d2 = nn.Conv2d(filters[0], filters[1], 3, padding=1)
-        self.conv2d3 = nn.Conv2d(filters[1], filters[2], 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(filters[0])
+        # adjust the number of channels to match the next layer
+        self.adjust1 = nn.Conv2d(filters[0], filters[1], 1)
+
+        # first block: 2D convolution + batch normalization with residual connections
+        self.conv2d2_1 = nn.Conv2d(filters[0], filters[1], 3, padding=1)
+        self.bn2_1 = nn.BatchNorm2d(filters[1])
+        # adjust the number of channels to match the next layer
+        self.adjust2 = nn.Conv2d(filters[1], filters[2], 1)
+        self.conv2d2_2 = nn.Conv2d(filters[1], filters[1], 3, padding=1)
+        self.bn2_2 = nn.BatchNorm2d(filters[1])
+
+        # second block: 2D convolution + batch normalization with residual connections
+        self.conv2d3_1 = nn.Conv2d(filters[1], filters[2], 3, padding=1)
+        self.bn3_1 = nn.BatchNorm2d(filters[2])
+        # adjust the number of channels to match the next layer
+        self.adjust3 = nn.Conv2d(filters[1], filters[2], 1)
+        self.conv2d3_2 = nn.Conv2d(filters[2], filters[2], 3, padding=1)
+        self.bn3_2 = nn.BatchNorm2d(filters[2])
+
+        # fully connected layers
         self.fc1 = nn.Linear(3 * 3 * filters[2], 128)
         self.fc2 = nn.Linear(128, n_classes)
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -96,40 +122,47 @@ class CNN(nn.Module):
             preds (tensor): logits of predictions of shape (N, C)
                 Reminder: logits are value pre-softmax.
         """
-        
-        pred = F.relu(self.conv2d1(x))
-        pred = F.max_pool2d(pred, 2)
-        pred = F.relu(self.conv2d2(pred))
-        pred = F.max_pool2d(pred, 2)
-        pred = F.relu(self.conv2d3(pred))
-        pred = F.max_pool2d(pred, 2)
-        pred = pred.reshape((pred.shape[0], -1))
-        pred = F.relu(self.fc1(pred))
+        # first convolution layer
+        pred = F.relu(self.bn1(self.conv2d1(x)))
+        res = F.max_pool2d(pred, 2)
+
+        # first block
+        pred = F.relu(self.bn2_1(self.conv2d2_1(res)))
         pred = self.dropout(pred)
+        res = F.relu(pred + self.adjust1(res))
+        pred = F.relu(self.bn2_2(self.conv2d2_2(res)))
+        pred = self.dropout(pred)
+        res = F.max_pool2d(F.relu(pred + res), 2)
+
+        # second block
+        pred = F.relu(self.bn3_1(self.conv2d3_1(res)))
+        pred = self.dropout(pred)
+        res = F.relu(pred + self.adjust2(res))
+        pred = F.relu(self.bn3_2(self.conv2d3_2(res)))
+        pred = self.dropout(pred)
+        res = F.max_pool2d(F.relu(pred + res), 2)
+
+        # fully connected layers
+        pred = res.reshape((res.shape[0], -1))
+        pred = F.relu(self.fc1(pred))
         pred = self.fc2(pred)
 
         return pred
 
 
 def patchify(images, n_patches):
-    n, c, h, w = images.shape
+    # we assuume that h = w
+    n, c, h, _ = images.shape
 
     patch_size = h // n_patches
+    # unfold the image into patches
     patches = images.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+    # reshape the patches to have the same number of dimensions as the original image
     patches = patches.contiguous().view(n, c, n_patches ** 2, patch_size, patch_size)
+    # permute the dimensions to have the patches as the first dimension
     patches = patches.permute(0, 2, 1, 3, 4).contiguous().view(n, n_patches ** 2, -1)
 
     return patches
-
-def get_positional_embeddings(sequence_length, d):
-    position = torch.arange(sequence_length, dtype=torch.float).unsqueeze(1)
-    div_term = 10000 ** (torch.arange(0, d, 2).float() / d)
-    
-    pos_embedding = torch.zeros((sequence_length, d))
-    pos_embedding[:, 0::2] = torch.sin(position / div_term)
-    pos_embedding[:, 1::2] = torch.cos(position / div_term)
-    
-    return pos_embedding
 
 class MyMSA(nn.Module):
     def __init__(self, d, n_heads=2):
@@ -140,10 +173,12 @@ class MyMSA(nn.Module):
         assert d % n_heads == 0, f"Can't divide dimension {d} into {n_heads} heads"
         self.d_head = d // n_heads
 
+        # linear mappings for Q, K, V
         self.q_mappings = nn.Linear(d, d)
         self.k_mappings = nn.Linear(d, d)
         self.v_mappings = nn.Linear(d, d)
 
+        # softmax for attention scores
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, sequences):
@@ -153,16 +188,19 @@ class MyMSA(nn.Module):
         K = self.k_mappings(sequences).view(batch_size, seq_length, self.n_heads, self.d_head)
         V = self.v_mappings(sequences).view(batch_size, seq_length, self.n_heads, self.d_head)
 
-        Q = Q.permute(0, 2, 1, 3)  # (batch_size, n_heads, seq_length, d_head)
-        K = K.permute(0, 2, 1, 3)  # (batch_size, n_heads, seq_length, d_head)
-        V = V.permute(0, 2, 1, 3)  # (batch_size, n_heads, seq_length, d_head)
+        # want shape (batch_size, n_heads, seq_length, d_head)
+        Q = Q.permute(0, 2, 1, 3)
+        K = K.permute(0, 2, 1, 3)
+        V = V.permute(0, 2, 1, 3)
 
-        attention_scores = Q @ K.transpose(-2, -1) / (self.d_head ** 0.5)  # (batch_size, n_heads, seq_length, seq_length)
-        attention_probs = self.softmax(attention_scores)  # (batch_size, n_heads, seq_length, seq_length)
-        attention_output = attention_probs @ V  # (batch_size, n_heads, seq_length, d_head)
+        # compute attention scores
+        attention_scores = Q @ K.transpose(-2, -1) / (self.d_head ** 0.5)
+        attention_probs = self.softmax(attention_scores)
+        attention_output = attention_probs @ V
 
-        attention_output = attention_output.permute(0, 2, 1, 3).contiguous()  # (batch_size, seq_length, n_heads, d_head)
-        attention_output = attention_output.view(batch_size, seq_length, d)  # (batch_size, seq_length, d)
+        # want shape (batch_size, seq_length, n_heads, d_head)
+        attention_output = attention_output.permute(0, 2, 1, 3).contiguous()
+        attention_output = attention_output.view(batch_size, seq_length, d)
 
         return attention_output
 
@@ -172,6 +210,7 @@ class MyViTBlock(nn.Module):
         self.hidden_d = hidden_d
         self.n_heads = n_heads
 
+        # vit block: layer norm -> multi-head self-attention -> layer norm -> mlp
         self.norm1 = nn.LayerNorm(hidden_d)
         self.mhsa = MyMSA(hidden_d, n_heads)
         self.norm2 = nn.LayerNorm(hidden_d)
@@ -182,6 +221,7 @@ class MyViTBlock(nn.Module):
         )
 
     def forward(self, x):
+        # residual connections
         x = x + self.mhsa(self.norm1(x))
         x = x + self.mlp(self.norm2(x))
         return x
@@ -210,7 +250,8 @@ class MyViT(nn.Module):
         self.input_d = chw[0] * self.patch_size[0] * self.patch_size[1]
         self.linear_mapper = nn.Linear(self.input_d, self.hidden_d)
         self.class_token = nn.Parameter(torch.rand(1, self.hidden_d))
-        self.positional_embeddings = get_positional_embeddings(n_patches ** 2 + 1, hidden_d)
+        # learnable positional embeddings
+        self.positional_embeddings = nn.Parameter(torch.rand(n_patches ** 2 + 1, hidden_d))
         self.blocks = nn.ModuleList([MyViTBlock(hidden_d, n_heads) for _ in range(n_blocks)])
         self.mlp = nn.Linear(self.hidden_d, out_d)
 
@@ -224,21 +265,27 @@ class MyViT(nn.Module):
             preds (tensor): logits of predictions of shape (N, C)
                 Reminder: logits are value pre-softmax.
         """
-        n, c, h, w = x.shape
+        n, _, _, _ = x.shape
 
+        # patchify the input
         patches = patchify(x, self.n_patches)
+        # linear mapping of the patches
         tokens = self.linear_mapper(patches)
+        # add the class token
         tokens = torch.cat((self.class_token.expand(n, 1, -1), tokens), dim=1)
-        preds = tokens + self.positional_embeddings.repeat(n, 1, 1)
+        # add positional embeddings
+        preds = tokens + self.positional_embeddings[:tokens.size(1)].unsqueeze(0)
 
+        # pass through the transformer blocks
         for block in self.blocks:
             preds = block(preds)
 
+        # take the class token
         preds = preds[:, 0]
         preds = self.mlp(preds)
         
         return preds
-
+    
 
 class Trainer(object):
     """
@@ -262,6 +309,7 @@ class Trainer(object):
         self.model = model
         self.batch_size = batch_size
         self.device = torch.device(device)
+        # move the model to the device
         self.model.to(self.device)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -277,9 +325,7 @@ class Trainer(object):
             dataloader (DataLoader): dataloader for training data
         """
         for ep in range(self.epochs):
-            print(ep)
             self.train_one_epoch(dataloader, ep)
-            ### WRITE YOUR CODE HERE if you want to do add something else at each epoch
 
     def train_one_epoch(self, dataloader, ep):
         """
@@ -291,16 +337,25 @@ class Trainer(object):
         Arguments:
             dataloader (DataLoader): dataloader for training data
         """
+        avg_loss = 0
+        n_losses = 0
         self.model.train()
-        for it, batch in enumerate(dataloader):
+        for batch in dataloader:
             x, y = batch
+            # move the data to the device
             x, y = x.to(self.device), y.to(self.device)
 
             logits = self.model(x)
             loss = self.criterion(logits, y)
+
+            avg_loss += loss.item()
+            n_losses += 1
+
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
+            
+        print(f"Epoch {ep} - Loss: {avg_loss / n_losses}")
 
     def predict_torch(self, dataloader):
         """

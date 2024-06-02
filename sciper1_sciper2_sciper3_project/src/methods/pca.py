@@ -44,12 +44,14 @@ class PCA(object):
 
         eigvals, eigvecs = np.linalg.eigh(cov_matrix)
 
+        # sort the eigenvectors by decreasing eigenvalues
         sorted_indices = np.argsort(eigvals)[::-1]
         eigvals = eigvals[sorted_indices]
         eigvecs = eigvecs[:, sorted_indices]
 
         self.W = eigvecs[:, :self.d]
 
+        # compute explained variance
         exvar = (np.sum(eigvals[:self.d])/np.sum(eigvals)) * 100
         
         return exvar
